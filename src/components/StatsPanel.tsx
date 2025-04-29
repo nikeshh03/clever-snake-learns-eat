@@ -1,6 +1,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { Separator } from '@/components/ui/separator';
 
 interface StatsPanelProps {
   stats: {
@@ -14,6 +15,10 @@ interface StatsPanelProps {
 const StatsPanel = ({ stats }: StatsPanelProps) => {
   const progressPercentage = stats.highScore > 0 
     ? (stats.score / stats.highScore) * 100 
+    : 0;
+  
+  const learningProgress = stats.gamesPlayed > 0
+    ? Math.min(Math.log(stats.gamesPlayed) * 10, 100)
     : 0;
 
   return (
@@ -38,7 +43,7 @@ const StatsPanel = ({ stats }: StatsPanelProps) => {
           
           <div className="space-y-1">
             <p className="text-xs text-muted-foreground">Avg Score</p>
-            <p className="text-lg font-medium">{stats.averageScore}</p>
+            <p className="text-lg font-medium">{stats.averageScore.toFixed(1)}</p>
           </div>
           
           <div className="space-y-1">
@@ -54,6 +59,23 @@ const StatsPanel = ({ stats }: StatsPanelProps) => {
                 : '0%'}
             </p>
           </div>
+        </div>
+
+        <Separator className="my-2" />
+        
+        <div className="space-y-2">
+          <div className="flex justify-between text-sm">
+            <span>AI Learning Progress</span>
+            <span className="font-medium">{Math.round(learningProgress)}%</span>
+          </div>
+          <Progress value={learningProgress} className="h-2 bg-accent" />
+          <p className="text-xs text-muted-foreground">
+            {stats.gamesPlayed < 10 
+              ? "AI needs more games to learn effectively" 
+              : stats.gamesPlayed < 50
+                ? "AI is developing basic strategies"
+                : "AI has learned decent gameplay tactics"}
+          </p>
         </div>
       </CardContent>
     </Card>

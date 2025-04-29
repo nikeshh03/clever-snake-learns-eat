@@ -12,6 +12,7 @@ export class Agent {
   private gridSize: number;
   private directions: string[];
   private cumulativeReward: number;
+  private consecutiveNonFoodMoves: number;
 
   constructor(gridSize: number, learningRate = 0.1) {
     this.gridSize = gridSize;
@@ -24,6 +25,7 @@ export class Agent {
     this.lastState = null;
     this.lastAction = null;
     this.cumulativeReward = 0;
+    this.consecutiveNonFoodMoves = 0;
     this.directions = ['UP', 'RIGHT', 'DOWN', 'LEFT'];
   }
 
@@ -34,6 +36,14 @@ export class Agent {
     // Direction to food
     const foodDirX = food.x > head.x ? 'RIGHT' : food.x < head.x ? 'LEFT' : 'SAME';
     const foodDirY = food.y > head.y ? 'DOWN' : food.y < head.y ? 'UP' : 'SAME';
+    
+    // Distance to food (normalized)
+    const distanceX = Math.abs(food.x - head.x) / this.gridSize;
+    const distanceY = Math.abs(food.y - head.y) / this.gridSize;
+    const distanceCategory = 
+      distanceX + distanceY < 0.2 ? 'VERY_CLOSE' :
+      distanceX + distanceY < 0.4 ? 'CLOSE' :
+      distanceX + distanceY < 0.7 ? 'MEDIUM' : 'FAR';
     
     // Danger checks (walls or self)
     let dangerAhead = false;
@@ -60,19 +70,29 @@ export class Agent {
     }
     
     // Construct state string
-    return `${currentDirection}|${foodDirX}|${foodDirY}|${dangerAhead ? 1 : 0}|${dangerRight ? 1 : 0}|${dangerLeft ? 1 : 0}`;
+    return `${currentDirection}|${foodDirX}|${foodDirY}|${distanceCategory}|${dangerAhead ? 1 : 0}|${dangerRight ? 1 : 0}|${dangerLeft ? 1 : 0}`;
   }
 
   // Get or initialize Q-values for a state
   private getQValues(state: string): number[] {
     if (!this.qTable.has(state)) {
-      // Initialize with small random values
-      this.qTable.set(state, [
-        Math.random() * 0.1,
-        Math.random() * 0.1,
-        Math.random() * 0.1,
-        Math.random() * 0.1
-      ]);
+      // Initialize with small random values biased toward food direction
+      const [, foodDirX, foodDirY] = state.split('|');
+      
+      const values = [
+        Math.random() * 0.1, // UP
+        Math.random() * 0.1, // RIGHT
+        Math.random() * 0.1, // DOWN
+        Math.random() * 0.1  // LEFT
+      ];
+      
+      // Slightly bias initial values toward food
+      if (foodDirY === 'UP') values[0] += 0.05;
+      if (foodDirX === 'RIGHT') values[1] += 0.05;
+      if (foodDirY === 'DOWN') values[2] += 0.05;
+      if (foodDirX === 'LEFT') values[3] += 0.05;
+      
+      this.qTable.set(state, values);
     }
     return this.qTable.get(state)!;
   }
@@ -127,6 +147,14 @@ export class Agent {
       this.minExplorationRate,
       this.explorationRate * this.explorationDecay
     );
+
+    // Track moves not reaching food
+    this.consecutiveNonFoodMoves++;
+    if (this.consecutiveNonFoodMoves > 100) {
+      // Increase exploration if the snake seems stuck
+      this.explorationRate = Math.min(0.5, this.explorationRate * 2);
+      this.consecutiveNonFoodMoves = 0;
+    }
     
     return this.directions[this.lastAction!];
   }
@@ -134,6 +162,11 @@ export class Agent {
   // Receive external reward
   public receiveReward(reward: number): void {
     this.cumulativeReward += reward;
+    
+    // Reset tracking when food is reached
+    if (reward > 5) {
+      this.consecutiveNonFoodMoves = 0;
+    }
   }
 
   // Learn from experience
@@ -153,8 +186,22 @@ export class Agent {
     const currentState = this.getState(newSnake, newFood, this.directions[this.lastAction]);
     const currentQValues = this.getQValues(currentState);
     
-    // Calculate reward (simplified)
+    // Calculate reward
     let reward = this.cumulativeReward;
+    
+    // Add distance-based reward component to encourage moving toward food
+    if (!ateFood && prevSnake && prevSnake[0] && newSnake && newSnake[0]) {
+      const oldDistanceToFood = Math.abs(prevSnake[0].x - prevFood.x) + Math.abs(prevSnake[0].y - prevFood.y);
+      const newDistanceToFood = Math.abs(newSnake[0].x - newFood.x) + Math.abs(newSnake[0].y - newFood.y);
+      
+      // Reward getting closer to food
+      if (newDistanceToFood < oldDistanceToFood) {
+        reward += 0.5;
+      } else if (newDistanceToFood > oldDistanceToFood) {
+        reward -= 0.2;
+      }
+    }
+    
     this.cumulativeReward = 0; // Reset cumulative reward
     
     // Calculate TD target (Temporal Difference)
